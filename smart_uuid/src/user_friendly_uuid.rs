@@ -44,8 +44,10 @@ impl<T: UuidType> UserFriendlyUuid<T> {
 
     /// Parses a user-friendly string like "retail_550e8400-e29b-41d4-a716-446655440000".
     pub fn parse_str(s: &str) -> Result<Self, TypedUuidError> {
-        // Find the first underscore to split prefix from UUID
-        let underscore_pos = s.find('_').ok_or_else(|| {
+        // Find the last underscore to split prefix from UUID.
+        // We use rfind because prefixes may contain underscores (e.g., "http_server"),
+        // but UUIDs never contain underscores (only hyphens).
+        let underscore_pos = s.rfind('_').ok_or_else(|| {
             TypedUuidError::InvalidFormat(
                 "expected format 'prefix_uuid', no underscore found".to_string(),
             )
