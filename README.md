@@ -11,11 +11,7 @@ This crate provides UUIDs that encode an enum variant directly in the UUID bytes
 
 ## Usage
 
-### Implementing UuidType
-
-There are two ways to implement the `UuidType` trait:
-
-**1. Using the derive macro (recommended):**
+### Using the Derive Macro (Recommended)
 
 ```rust
 use smart_uuid::{TypedUuid, UuidType, UserFriendlyUuid};
@@ -33,7 +29,7 @@ let friendly: UserFriendlyUuid<UserType> = user_id.into();
 println!("{}", friendly); // retail_550e8400-e29b-...
 ```
 
-**2. Manual implementation:**
+### Manual Implementation
 
 ```rust
 use smart_uuid::UuidType;
@@ -69,25 +65,130 @@ impl UuidType for DocumentType {
 }
 ```
 
-## Running the Demo
+## The UuidType Derive Macro
 
-To see both approaches in action:
+### What Kind of Macro Is This?
+
+This is a **derive procedural macro** - one of three types of Rust macros:
+
+| Type | Syntax | Use Case |
+|------|--------|----------|
+| Declarative | `macro_rules!` | Pattern-based text substitution |
+| **Derive Procedural** | `#[derive(Foo)]` | Auto-implement traits (what we use) |
+| Attribute Procedural | `#[foo]` | Transform entire items |
+| Function-like Procedural | `foo!(...)` | Custom syntax |
+
+Procedural macros are compiled Rust code that runs at compile time, manipulating the Abstract Syntax Tree (AST). They must live in a separate crate (hence `smart_uuid_derive`).
+
+### Supported Features
+
+| Feature | Example | Notes |
+|---------|---------|-------|
+| Unit variant enums | `enum Foo { A, B }` | Required |
+| Custom prefixes | `#[uuid_type(prefix = "x")]` | Optional |
+| Up to 256 variants | `enum Big { V0, V1, ... V255 }` | Discriminant is stored in 1 byte |
+| Acronym handling | `HTTPServer` -> `http_server` | Automatic |
+
+### Not Supported
+
+| Feature | Error Message |
+|---------|--------------|
+| Structs | "UuidType can only be derived for enums" |
+| Tuple variants | "UuidType can only be derived for enums with unit variants" |
+| Struct variants | "UuidType can only be derived for enums with unit variants" |
+| Empty enums | "UuidType cannot be derived for empty enums" |
+| >256 variants | "UuidType can only be derived for enums with at most 256 variants" |
+| Invalid attributes | "unknown uuid_type attribute `foo`. Expected `prefix = \"...\"`" |
+
+### What Can Go Wrong With Macros
+
+Procedural macros have several failure modes that must be tested:
+
+#### 1. Input Validation
+The macro must reject invalid inputs with clear error messages:
+- Applied to wrong type (struct instead of enum)
+- Enum with non-unit variants
+- Too many variants (>256)
+- Empty enums
+
+#### 2. Code Generation Bugs
+The generated code could be subtly wrong:
+- **Discriminant mismatch**: `discriminant()` and `from_discriminant()` must be inverses
+- **Prefix bugs**: Snake_case conversion must handle edge cases like acronyms
+- **Path resolution**: Must use `smart_uuid::UuidType`, not just `UuidType`
+
+#### 3. Attribute Parsing
+Custom attributes can fail in confusing ways:
+- Typos in attribute keys (e.g., `prfx` instead of `prefix`)
+- Wrong value types
+- Unknown keys
+
+### How We Test the Macro
+
+We use [`trybuild`](https://crates.io/crates/trybuild) - the standard crate for testing proc macros:
+
+```
+smart_uuid_derive/tests/
+├── integration.rs          # Test runner
+└── cases/
+    ├── pass/               # Should compile and run
+    │   ├── basic_enum.rs
+    │   ├── custom_prefix.rs
+    │   ├── many_variants.rs
+    │   ├── single_variant.rs
+    │   └── snake_case_acronyms.rs
+    └── fail/               # Should fail with expected errors
+        ├── empty_enum.rs + .stderr
+        ├── invalid_attribute.rs + .stderr
+        ├── struct_not_enum.rs + .stderr
+        ├── struct_variant.rs + .stderr
+        ├── too_many_variants.rs + .stderr
+        └── tuple_variant.rs + .stderr
+```
+
+Run macro tests:
+```bash
+cargo test -p smart_uuid_derive
+```
+
+## Running the Demo
 
 ```bash
 cargo run -p smart_uuid --example demo
 ```
 
-## Running Tests
+## Running All Tests
 
 ```bash
+# Library tests
 cargo test -p smart_uuid
+
+# Macro tests
+cargo test -p smart_uuid_derive
+
+# All tests
+cargo test --workspace
 ```
 
 ## Project Structure
 
-This is a Cargo workspace with two crates:
+```
+smart_uuid/
+├── Cargo.toml              # Workspace manifest
+├── smart_uuid/             # Main library
+│   ├── src/
+│   │   ├── lib.rs
+│   │   ├── traits.rs       # UuidType trait
+│   │   ├── typed_uuid.rs
+│   │   ├── user_friendly_uuid.rs
+│   │   └── error.rs
+│   └── examples/
+│       └── demo.rs
+└── smart_uuid_derive/      # Procedural macro crate
+    ├── src/
+    │   └── lib.rs          # Macro implementation
+    └── tests/
+        └── cases/          # trybuild test cases
+```
 
-- `smart_uuid/` - The main library
-- `smart_uuid_derive/` - Procedural macro for `#[derive(UuidType)]`
-
-The derive macro lives in a separate crate because Rust requires procedural macros to be in their own crate.
+The derive macro lives in a separate crate because Rust requires procedural macros to be compiled before the code that uses them.
