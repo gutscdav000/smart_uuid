@@ -151,31 +151,48 @@ Run macro tests:
 cargo test -p smart_uuid_derive
 ```
 
-## Running the Demo
+## Building, Testing, and Running
+
+### Build
 
 ```bash
-cargo run -p smart_uuid --example demo
+# Build everything
+cargo build --workspace
+
+# Build only the main library
+cargo build -p smart_uuid
+
+# Build only the derive macro
+cargo build -p smart_uuid_derive
 ```
 
-## Running All Tests
+### Test
 
 ```bash
-# Library tests
+# Run all tests (library + macro)
+cargo test --workspace
+
+# Run only library tests (21 tests)
 cargo test -p smart_uuid
 
-# Macro tests
+# Run only macro tests (11 trybuild cases)
 cargo test -p smart_uuid_derive
+```
 
-# All tests
-cargo test --workspace
+### Run
+
+```bash
+# Run the demo example
+cargo run -p smart_uuid --example demo
 ```
 
 ## Project Structure
 
 ```
 smart_uuid/
-├── Cargo.toml              # Workspace manifest
+├── Cargo.toml              # Workspace manifest (defines members)
 ├── smart_uuid/             # Main library
+│   ├── Cargo.toml          # Library package manifest
 │   ├── src/
 │   │   ├── lib.rs
 │   │   ├── traits.rs       # UuidType trait
@@ -185,10 +202,26 @@ smart_uuid/
 │   └── examples/
 │       └── demo.rs
 └── smart_uuid_derive/      # Procedural macro crate
+    ├── Cargo.toml          # Macro package manifest
     ├── src/
     │   └── lib.rs          # Macro implementation
     └── tests/
         └── cases/          # trybuild test cases
 ```
 
-The derive macro lives in a separate crate because Rust requires procedural macros to be compiled before the code that uses them.
+### Why Multiple Cargo.toml Files?
+
+This project uses a **Cargo workspace** - a common Rust pattern for multi-crate projects.
+
+| File | Purpose |
+|------|---------|
+| `/Cargo.toml` | **Workspace manifest** - declares member crates, enables shared `Cargo.lock` and `target/` directory |
+| `/smart_uuid/Cargo.toml` | **Library manifest** - defines the main library's dependencies and metadata |
+| `/smart_uuid_derive/Cargo.toml` | **Macro manifest** - defines the proc-macro crate with `proc-macro = true` |
+
+**Why is the macro in a separate crate?** Rust requires procedural macros to be compiled before the code that uses them. A proc-macro crate can only export procedural macros - it cannot contain regular library code. This is a language-level requirement, not a stylistic choice.
+
+This pattern is used by many popular crates:
+- `serde` + `serde_derive`
+- `thiserror` + `thiserror-impl`
+- `tokio` + `tokio-macros`
