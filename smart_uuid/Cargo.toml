@@ -1,0 +1,15 @@
+[package]
+name = "smart_uuid"
+version = "0.1.0"
+edition = "2021"
+description = "Type-safe UUIDs with embedded type information"
+
+[dependencies]
+smart_uuid_derive = { path = "../smart_uuid_derive" }
+uuid = { version = "1", features = ["v4", "v8", "serde"] }
+thiserror = "1.0"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1.0"
