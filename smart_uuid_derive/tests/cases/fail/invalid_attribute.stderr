@@ -1,0 +1,5 @@
+error: unknown uuid_type attribute `prfx`. Expected `prefix = "..."`
+ --> tests/cases/fail/invalid_attribute.rs:8:17
+  |
+8 |     #[uuid_type(prfx = "usr")]
+  |                 ^^^^

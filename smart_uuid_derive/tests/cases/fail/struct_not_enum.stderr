@@ -1,0 +1,7 @@
+error: UuidType can only be derived for enums
+ --> tests/cases/fail/struct_not_enum.rs:6:1
+  |
+6 | / struct NotAnEnum {
+7 | |     id: u32,
+8 | | }
+  | |_^

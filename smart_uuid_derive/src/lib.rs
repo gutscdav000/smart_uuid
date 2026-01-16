@@ -51,6 +51,15 @@ fn impl_uuid_type(input: &DeriveInput) -> TokenStream2 {
         }
     }
 
+    // Check for empty enum
+    if variants.is_empty() {
+        return syn::Error::new_spanned(
+            input,
+            "UuidType cannot be derived for empty enums (at least one variant required)",
+        )
+        .to_compile_error();
+    }
+
     // Check we don't have more than 256 variants
     if variants.len() > 256 {
         return syn::Error::new_spanned(
@@ -83,15 +92,16 @@ fn impl_uuid_type(input: &DeriveInput) -> TokenStream2 {
         .collect();
 
     // Generate prefix match arms
-    let prefix_arms: Vec<_> = variants
-        .iter()
-        .map(|v| {
-            let variant_name = &v.ident;
-            let prefix = get_prefix_from_attrs(&v.attrs)
-                .unwrap_or_else(|| to_snake_case(&variant_name.to_string()));
-            quote! { Self::#variant_name => #prefix }
-        })
-        .collect();
+    let mut prefix_arms = Vec::new();
+    for v in variants.iter() {
+        let variant_name = &v.ident;
+        let prefix = match get_prefix_from_attrs(&v.attrs) {
+            Ok(Some(p)) => p,
+            Ok(None) => to_snake_case(&variant_name.to_string()),
+            Err(e) => return e.to_compile_error(),
+        };
+        prefix_arms.push(quote! { Self::#variant_name => #prefix });
+    }
 
     quote! {
         impl smart_uuid::UuidType for #name {
@@ -117,8 +127,9 @@ fn impl_uuid_type(input: &DeriveInput) -> TokenStream2 {
     }
 }
 
-/// Extract custom prefix from #[uuid_type(prefix = "...")] attribute
-fn get_prefix_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
+/// Extract custom prefix from #[uuid_type(prefix = "...")] attribute.
+/// Returns Ok(Some(prefix)) if found, Ok(None) if no uuid_type attr, or Err for invalid syntax.
+fn get_prefix_from_attrs(attrs: &[syn::Attribute]) -> Result<Option<String>, syn::Error> {
     for attr in attrs {
         if !attr.path().is_ident("uuid_type") {
             continue;
@@ -126,28 +137,71 @@ fn get_prefix_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
 
         // Parse #[uuid_type(prefix = "...")]
         let mut prefix = None;
-        let _ = attr.parse_nested_meta(|meta| {
+        let mut had_error: Option<syn::Error> = None;
+
+        let result = attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("prefix") {
                 let value: syn::LitStr = meta.value()?.parse()?;
                 prefix = Some(value.value());
+                Ok(())
+            } else {
+                // Unknown attribute key - emit error
+                let path = meta.path.get_ident()
+                    .map(|i| i.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                had_error = Some(syn::Error::new_spanned(
+                    &meta.path,
+                    format!("unknown uuid_type attribute `{}`. Expected `prefix = \"...\"`", path),
+                ));
+                // Skip the value if present to avoid parse errors
+                if meta.input.peek(syn::Token![=]) {
+                    let _: syn::Token![=] = meta.input.parse()?;
+                    let _: syn::Lit = meta.input.parse()?;
+                }
+                Ok(())
             }
-            Ok(())
         });
 
+        // Propagate parse errors
+        if let Err(e) = result {
+            return Err(e);
+        }
+
+        // Propagate unknown attribute errors
+        if let Some(e) = had_error {
+            return Err(e);
+        }
+
         if prefix.is_some() {
-            return prefix;
+            return Ok(prefix);
         }
     }
-    None
+    Ok(None)
 }
 
-/// Convert PascalCase to snake_case
+/// Convert PascalCase to snake_case, handling acronyms correctly.
+///
+/// Examples:
+/// - `Retail` -> `retail`
+/// - `HTTPServer` -> `http_server`
+/// - `XMLParser` -> `xml_parser`
+/// - `getUserID` -> `get_user_id`
 fn to_snake_case(s: &str) -> String {
     let mut result = String::new();
-    for (i, c) in s.chars().enumerate() {
+    let chars: Vec<char> = s.chars().collect();
+
+    for (i, &c) in chars.iter().enumerate() {
         if c.is_uppercase() {
+            // Insert underscore before uppercase if:
+            // 1. Not at the start, AND
+            // 2. Either the previous char was lowercase, OR
+            //    the next char is lowercase (end of an acronym like "HTTPServer" -> "HTTP" + "Server")
             if i > 0 {
-                result.push('_');
+                let prev_lower = chars[i - 1].is_lowercase();
+                let next_lower = chars.get(i + 1).map(|c| c.is_lowercase()).unwrap_or(false);
+                if prev_lower || next_lower {
+                    result.push('_');
+                }
             }
             result.push(c.to_lowercase().next().unwrap());
         } else {

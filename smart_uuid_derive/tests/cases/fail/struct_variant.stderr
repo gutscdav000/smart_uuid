@@ -1,0 +1,5 @@
+error: UuidType can only be derived for enums with unit variants (no fields)
+ --> tests/cases/fail/struct_variant.rs:8:5
+  |
+8 |     Struct { value: i32 },
+  |     ^^^^^^^^^^^^^^^^^^^^^

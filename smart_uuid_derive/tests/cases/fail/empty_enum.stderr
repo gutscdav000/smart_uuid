@@ -1,0 +1,5 @@
+error: UuidType cannot be derived for empty enums (at least one variant required)
+  --> tests/cases/fail/empty_enum.rs:12:1
+   |
+12 | enum EmptyEnum {}
+   | ^^^^^^^^^^^^^^^^^
